@@ -1,0 +1,229 @@
+---
+title: "R-Packages"
+author: "Amitai Asaf"
+date: "2023-12-26"
+output: html_document
+---
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Load librarys and data
+
+```{r librarys, results="hide", error=FALSE,warning=FALSE,message=FALSE}
+library(tidytuesdayR)
+library(tidyverse)
+library(igraph)
+library(ggplot2)
+
+last_tuesday()
+r_data <- tt_load("2023-12-26")
+```
+
+# inspect data
+
+```{r glimpse}
+map(r_data,glimpse)
+```
+
+# SNA
+
+### Focus
+
+The three data sets provide a lot of data as expected from a database collecting data about R packages. This could be a bit overwhelming, but with a small glimpse the second data frame catches the eye. The second data frame, also called external calls, lists the amount of calls each R package makes to another R-package.
+
+This type of data could also be thought as an edge list, a list of connections between nodes. Nodes are actors who exist either in the world or as a concept, and they could have relations with other nodes. Together the actors (nodes) and the connections between them (edges) can form a network of connections also known as a social network. 
+
+Here I am going to analyze the social network of R-packages and try to learn about the relationships between the packages.
+
+## create basic social network
+
+First we create the basic network
+
+```{r create network}
+
+external_calls <- r_data$external_calls
+
+sn <- graph_from_edgelist(cbind(external_calls$package_from,external_calls$package_to))
+E(sn)$weight <- external_calls$n_total
+```
+
+Then we check how many actors and connections are there in the network
+```{r asses network}
+paste("There are",as.character(vcount(sn)) , "actors")
+paste("and" , ecount(sn) , "connections between them in the network")
+```
+This makes the network too big for a plot but we can still analyze it.
+
+## centralization measurments
+
+```{r centrality}
+
+sn_centrality <- data.frame(Package = V(sn)$name,
+                            in_degree_cen = degree(sn,mode="in"),
+                            out_degree_cen = degree(sn,mode="out"),
+                            total = degree(sn,mode="total"),
+                            in_strength_cen = strength(sn,mode="in"),
+                            out_strength_cen = strength(sn,mode="out"),
+                            betweeness_cen = betweenness(sn),
+                            in_closeness_cen = closeness(sn,mode="in"),
+                            out_closeness_cen = closeness(sn,mode="out"),
+                            eigen_cen = eigen_centrality(sn,directed = TRUE)$vector)
+
+sn_centrality <-replace(sn_centrality,is.na(sn_centrality),0)
+```
+
+### degree
+
+The degree of an actor is simply the amount of connections the actor have to its neighbors.
+In degrees represent the amount of packages that calls to a package and out degrees represent the amount of packages a package calls to. 
+
+A weighted degree, also called strength is the amount of calls a package make or receive respectively to in and out degrees.
+
+```{r degree,warning=FALSE}
+
+ggplot(sn_centrality, aes(x = in_degree_cen))+
+  geom_bar() +
+  xlim(0,50)+
+  ylim(0,500)
+
+ggplot(sn_centrality, aes(x = out_degree_cen))+
+  geom_bar() +
+  xlim(0,500) +
+  ylim(0,500)
+
+ggplot(sn_centrality, aes(x = in_strength_cen))+
+  geom_bar() +
+  xlim(0,500)+
+  ylim(0,500)
+
+ggplot(sn_centrality, aes(x = out_strength_cen))+
+  geom_bar() +
+  xlim(0,500) +
+  ylim(0,500)
+
+
+```
+
+Lets look which packages have the highest degrees and strengths
+
+```{r top degree,warning=FALSE}
+
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, in_degree_cen)) %>%
+    arrange(desc(in_degree_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=in_degree_cen,fill=Package)) +
+          geom_col() +
+          ylab("In-Degree") +
+          coord_flip()
+
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, out_degree_cen)) %>%
+    arrange(desc(out_degree_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=out_degree_cen,fill=Package)) +
+          geom_col() +
+          ylab("Out-Degree") +
+          coord_flip()
+
+
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, in_strength_cen)) %>%
+    arrange(desc(in_strength_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=in_strength_cen,fill=Package)) +
+          geom_col() +
+          ylab("In-Strength") +
+          coord_flip()
+
+
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, out_strength_cen)) %>%
+    arrange(desc(out_strength_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=out_strength_cen,fill=Package)) +
+          geom_col() +
+          ylab("Out-Strength") +
+          coord_flip()
+
+```
+
+### Betweeness
+
+Betweenes is a measurement of how many cases an actor stand in the path of 2 other actors.
+In our case a package may not call a package directly, rather it could call another package that would call the package instead and thus use it indirectly.
+
+Lets view the packages to stand between other packages the most.
+
+```{r betweeness}
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, betweeness_cen)) %>%
+    arrange(desc(betweeness_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=betweeness_cen,fill=Package)) +
+          geom_col() +
+          ylab("betweeness") +
+          coord_flip()
+```
+
+### closeness
+
+Closeness measure the sum of shortest distances between one actor and the other actors in means of indirect (or direct) relations
+
+```{r closeness}
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, in_closeness_cen)) %>%
+    arrange(desc(in_closeness_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=in_closeness_cen,fill=Package)) +
+          geom_col() +
+          ylab("in-closeness") +
+          coord_flip()
+
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, out_closeness_cen)) %>%
+    arrange(desc(out_closeness_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=out_closeness_cen,fill=Package)) +
+          geom_col() +
+          ylab("out-closeness") +
+          coord_flip()
+```
+
+### Eigen Vector
+
+The last measurement is the Eigen Vector. Unlike other measurements the eigen vector is a measurement of the neighboors of an actor rather than the actor itself. It assumes that if an actor is related to a lot of other important actors than it is important itself
+
+```{r Eigen Vector}
+sn_centrality %>%
+  mutate(Package = fct_reorder(Package, eigen_cen)) %>%
+    arrange(desc(eigen_cen)) %>%
+      head(10) %>%
+        ggplot(aes(x=Package, y=eigen_cen,fill=Package)) +
+          geom_col() +
+          ylab("Eigen Vector Score") +
+          coord_flip()
+
+```
+
+## Plotting a social network
+
+```{r ego}
+
+tidyverse_sn <- induced_subgraph(sn,unlist(ego(sn,nodes = "tidyverse")))
+
+
+plot.igraph(tidyverse_sn,
+            layout= layout_with_dh(tidyverse_sn),
+            vertex.size = 20,
+            vertex.color = "red",
+            vertex.label.cex = .5,
+            vertex.frame.color = NA,
+            layout = layout.fruchterman.reingold,
+            main = "tidyverse ego network"
+            )
+```
