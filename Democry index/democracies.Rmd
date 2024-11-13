@@ -1,0 +1,148 @@
+---
+title: "Democracies over time"
+author: "Amitai Asaf"
+date: "2024-11-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, message = FALSE)
+library(tidyverse)
+library(ggplot2)
+library("rnaturalearth")
+library(gganimate)
+
+democracy_data <- tidytuesdayR::tt_load('2024-11-05')$democracy_data
+```
+linkedin: https://www.linkedin.com/in/amitai-asaf/
+
+# Democracies vs dictatorships
+
+This project was inspired by the 2024 elections in the US. US is a democratic country, which means that the decisions in the country are dictated by the people. There are many types of democracies. In the past nations were small enough to allow citizens to take part in all decisions, this are called direct democracies. Today democracies are indirect, meaning that the population delegates the decision making to fewer people, this makes decision making easier to handle. Some democracies are parliamentary, in which the citizens choose parties to represent them in decision making and they form a government. Others are presidential in which the executive power is delegated to a single person.
+
+On the other hand there are dictatorships. Dictatorships are countries in which citizens are not part of the decision making, instead they are ruled by a minority of people who make the decisions. similar to democracies, there are many types of dictatorships. For instance there are monarchies, monarchies are usually ruled by a family of high status that gains the right to rule via birth. Another example would be military dictatorships. In military dictatorships the right to rule is gain by force and intimidation using a military superiority to control the masses.
+
+In this project I will explore the increase in democracies between 1950 and 2020 based on the data provided by the tidy Tuesday repository, democracy and dictatorship.
+
+The first thing we should look for is how many democracies vs dictatorship have there been through the years
+
+```{r Democracy vs dictatorship}
+democracy_count_year <- democracy_data %>%
+                          drop_na(is_democracy) %>%
+                          group_by(year,is_democracy) %>%
+                          count()
+
+ggplot(democracy_count_year, aes(x=year,y =n,fill=is_democracy)) +
+  geom_col() +
+  scale_fill_manual(labels = c("Dictatorship","Democracy"),values=c("#F8766D","#00BFC4"))+
+  labs(y= "country count",title = "Democracies vs dictatorships over the years")+
+  scale_x_continuous(n.breaks= 20) +
+  theme(legend.title=element_blank())
+```
+As can be seen in the Democracies vs dictatorships plot, there has been increase in democracies over the year, for whomever know a little bit recent history, this shouldn't come as a surprise. Ever since the spring of nations more and more countries became democratic. there has been a surge in democracy after the world wars, and as can be seen in the graph there has been another surge after the end of the cold war.
+
+## Back and forth
+
+While it is true that there were more democracies over the years, it doesn't mean that countries remained democratic and no democratic country became dictatorship. A democracy is a structure that allways need to be worked on and maintained. Approaching the data from a different angle can reveal this.
+
+```{r democracy acceleration}
+democracy_change_count <- democracy_data %>%
+                            mutate(democracy_last_year = lag(is_democracy)) %>%
+                            filter(democracy_last_year!=is_democracy & year != 1950) %>%
+                            mutate(change_direction = if_else(is_democracy,"Turned Democratic","Turned Not Democratic")) %>%
+                            group_by(year,change_direction) %>%
+                            count()
+
+
+democracy_change_count$change_direction = factor(democracy_change_count$change_direction, levels = c("Turned Not Democratic","Turned Democratic") )
+
+ggplot(democracy_change_count, aes(x=year,y = n,fill=change_direction)) +
+  geom_col() +
+  scale_x_continuous(n.breaks= 20) +
+  scale_fill_manual(labels = c("Turned Dictatorship","Turned Democractic"),values=c("#F8766D","#00BFC4"))+
+  labs(y= "country count",title = "Turning democratic vs dictatorship")+
+  theme(legend.title=element_blank())
+```
+As can be seen from the Turning democratic vs dictatorship plot, there are many shifts in ruling styles over the years. In some years there are only shifts towards democracies, in other years there are only shifts towards dictatorships. There are many shifts in between up to a point where the amount of countries in each side remains the same. The other plot might have fooled us to think that during those years there were no shifts at all, while in fact there were only three years were no such shifts append.
+
+## Democracy map
+
+While we have general trends, we might want have a more zoomed in look and see exactly which countries are democratic and when change happens exactly. for that we could view an animated world map showing which countries are democratic over the years.
+
+```{r democracy map}
+democracy_data$country_code <- recode(democracy_data$country_code,GER= "DEU",ROM="ROU",ZAR="COD")
+world <- ne_countries(scale = "medium", returnclass = "sf")
+plotdata <- left_join(world,democracy_data, by = c("iso_a3_eh" = "country_code"))
+
+
+animation <- ggplot(data = plotdata) +
+              geom_sf(aes(fill = is_democracy)) +
+              labs(title = 'Democracies - {current_frame}') +
+              scale_fill_manual(labels = c("Dictatorship","Democracy","Undecided"),values=c("#F8766D","#00BFC4","grey"))+
+              theme(legend.title=element_blank())+
+              transition_manual(year)
+
+animate(animation)
+```
+This map shows us that there are some countries that are more stable in their state, remaining democratic or dictatorship through the years. Others are more prone to change going back and forth from democracy to dictatorship and back again. It is also apearant that democracy spreads near other democracies. This might be attributed to exchange of thoughts and ideas between people of neighboring countries.
+
+## Democracy and feminism
+
+Democracy gives voting rights to its citizens sharing the power of decision making beyond a small group of people. But are everyone equal? Can everyone be a part of choosing the fate of their countries? This isn't cut and clear. We can look at trends in women's right to vote.
+
+```{r women right to vote}
+suffrage_count_year <- democracy_data %>%
+                          drop_na(has_full_suffrage) %>%
+                          group_by(year,has_full_suffrage) %>%
+                          count()
+
+ggplot(suffrage_count_year, aes(x=year,y =n,fill=has_full_suffrage)) +
+  geom_col() +
+  scale_fill_manual(labels = c("Partial right to vote","Full right to vote"),values=c("#F8766D","#00BFC4"),name = "Women right to vote")+
+  labs(y= "country count",title = "Women right to vote over the years")+
+  scale_x_continuous(n.breaks= 20)
+```
+This plot is certainly surprising. It looks like women's right to vote grew a lot faster than democracy did, how did this happen? Well, not all countries in which a person can vote can be considered democratic for many reasons, for instance it could be that the vote is for a certain level of power which is controlled by someone with more power. One such example would be Iran, in which people elect a president, but this president have to adhere to the choices of the supreme leader which isn't elected. Another reason is that sometimes while everyone can vote, the results are predetermined either by lack of competition or by unfair elections.
+
+## suffrage map
+
+We can look again at a country map to get a better view of what happend in each country through the years.
+
+```{r suffrage map}
+democracy_data$country_code <- recode(democracy_data$country_code,GER= "DEU",ROM="ROU",ZAR="COD")
+world <- ne_countries(scale = "medium", returnclass = "sf")
+plotdata <- left_join(world,democracy_data, by = c("iso_a3_eh" = "country_code"))
+
+
+animation <- ggplot(data = plotdata) +
+              geom_sf(aes(fill = has_full_suffrage)) +
+              labs(title = 'Womens right to vote - {current_frame}') +
+              scale_fill_manual(labels = c("Partial right to vote","Full right to vote","Undecided"),values=c("#F8766D","#00BFC4","grey"))+
+              theme(legend.title=element_blank())+
+              transition_manual(year)
+
+animate(animation)
+```
+This might be surprising to some, but not every country which was considered democratic had women right to vote. The conventional wisdom often equates democracy solely with the right to vote. However, this narrow definition overlooks the multifaceted nature of true democracy. While the right to vote is undeniably a cornerstone, it is not the sole determinant of a democratic society.
+
+Historically, the relationship between suffrage and democracy has been complex. Some countries, despite being classified as democracies, restricted voting rights to specific segments of the population, such as men of property or certain racial or ethnic groups. Conversely, certain authoritarian regimes have granted women the right to vote, while denying them other fundamental freedoms and rights. These historical anomalies challenge the simplistic notion that the right to vote is the sole indicator of a democratic society.
+
+# Conclusion
+
+A truly democratic society necessitates a broader range of freedoms and rights, including:
+
+Freedom of expression: The ability to express opinions without fear of reprisal, allowing citizens to hold their leaders accountable.
+
+Freedom of assembly: The right to gather peacefully and collectively advocate for change, enabling citizens to participate in the political process.
+
+Rule of law: A system where laws are fair, applied equally, and protect the rights of all citizens, regardless of their social or political status.
+
+Accountability: Elected officials are responsible to the people they represent and can be held accountable for their actions.
+
+Participation: Citizens have opportunities to participate in decision-making processes beyond voting, such as serving on public boards or attending town hall meetings.
+
+Diversity and inclusion: All voices are valued and heard, regardless of background, ethnicity, religion, gender, or other characteristics.
+
+By focusing solely on the right to vote, we risk overlooking the essential elements that constitute a vibrant and equitable democracy. A true democracy is a complex system that requires a delicate balance of these freedoms and rights to function effectively.
+
+A democracy that will not maintain all of these will not remain a democracy, and as can be seen from the various plots, not every country that is democratic will allays remain so. Democratic society has to be constantly maintained and cultivated so that people don`t equate democracy to voting alone.
